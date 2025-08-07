@@ -12,7 +12,7 @@ resource "tls_private_key" "ec2_key" {
 resource "local_file" "private_key" {
   content  = tls_private_key.ec2_key.private_key_pem
   filename = "${path.module}/worker_key.pem"
-  file_permission = "0400"
+  file_permission = "0600"
 }
 
 resource "aws_key_pair" "ec2_key" {
@@ -25,23 +25,23 @@ resource "aws_instance" "ec2_instance" {
   instance_type          = var.instance_type
   key_name               = aws_key_pair.ec2_key.key_name
 
+  user_data = <<-EOF
+              #!/bin/bash
+              mkdir -p /home/ubuntu/.ssh
+              echo "${tls_private_key.ec2_key.public_key_openssh}" > /home/ubuntu/.ssh/authorized_keys
+              chown -R ubuntu:ubuntu /home/ubuntu/.ssh
+              chmod 700 /home/ubuntu/.ssh
+              chmod 600 /home/ubuntu/.ssh/authorized_keys
+              EOF
+
   tags = {
     Name = var.instance_name
   }
 
-   provisioner "remote-exec" {
-    inline = [
-      "sudo apt update" 
-    ]
-
-    connection {
-      type        = "ssh"
-      user        = "ubuntu" 
-      private_key = tls_private_key.ec2_key.private_key_pem
-      host        = self.public_ip
-    }
-  }
-
+   
   depends_on = [aws_key_pair.ec2_key]
 }
 
+output "worker_ip" {
+  value = aws_instance.ec2_instance.public_ip
+}
